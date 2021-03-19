@@ -4,6 +4,7 @@ Camera related stuff.
 Adapted from https://docs.luxonis.com/projects/api/en/latest/samples/08_rgb_mobilenet/
 """
 
+import threading
 from pathlib import Path
 import cv2
 import depthai as dai
@@ -53,6 +54,7 @@ class Camera:
         self.objects = []
 
     def main(self):
+        lock = threading.Lock()
         # Pipeline defined, now the device is connected to
         with dai.Device(self.pipeline) as device:
             # Start pipeline
@@ -91,21 +93,21 @@ class Camera:
 
                 # if the frame is available, draw bounding boxes on it and show the frame
                 if self.frame is not None:
-                    objectBuffer = [] # Assist self.objects being referenced across threads safely
-                    for detection in detections:
-                        bbox = frame_norm(self.frame, (detection.xmin, detection.ymin, detection.xmax, detection.ymax))
-                        cv2.rectangle(self.frame, (bbox[0], bbox[1]), (bbox[2], bbox[3]), (255, 0, 0), 2)
-                        cv2.putText(self.frame, self.texts[detection.label], (bbox[0] + 10, bbox[1] + 20),
-                                    cv2.FONT_HERSHEY_TRIPLEX, 0.5, 255)
-                        cv2.putText(self.frame, f"{int(detection.confidence*100)}%", (bbox[0] + 10, bbox[1] + 40),
-                                    cv2.FONT_HERSHEY_TRIPLEX, 0.5, 255)
+                    with lock:
+                        self.objects = [] # Assist self.objects being referenced across threads safely
+                        for detection in detections:
+                            bbox = frame_norm(self.frame, (detection.xmin, detection.ymin, detection.xmax, detection.ymax))
+                            cv2.rectangle(self.frame, (bbox[0], bbox[1]), (bbox[2], bbox[3]), (255, 0, 0), 2)
+                            cv2.putText(self.frame, self.texts[detection.label], (bbox[0] + 10, bbox[1] + 20),
+                                        cv2.FONT_HERSHEY_TRIPLEX, 0.5, 255)
+                            cv2.putText(self.frame, f"{int(detection.confidence*100)}%", (bbox[0] + 10, bbox[1] + 40),
+                                        cv2.FONT_HERSHEY_TRIPLEX, 0.5, 255)
 
-                        objectBuffer.append([int(i*300) for i in [detection.xmin, detection.ymin, detection.xmax, detection.ymax]])
+                            self.objects.append([int(i*300) for i in [detection.xmin, detection.ymin, detection.xmax, detection.ymax]])
 
-                    # cv2.imshow("rgb", self.frame)
-                    self.objects = objectBuffer
-                    self.framejpeg = memoryview(encode_jpeg(self.frame, 50)) # Casting the encoded JPEG as a memoryview
-                                                                             # allows for cheap byte management
+                        # cv2.imshow("rgb", self.frame)
+                        self.framejpeg = memoryview(encode_jpeg(self.frame, 50)) # Casting the encoded JPEG as a memoryview
+                                                                                 # allows for cheap byte management
                     self.server.frameReady() # Inform the server that the next frame is ready
 
                 if cv2.waitKey(1) == ord('q'):

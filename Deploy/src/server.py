@@ -24,7 +24,6 @@ class Client:
     def main(self):
         try:
             while True:
-                print(f'{self.addr} exists.')
                 # Receive command
                 command = int.from_bytes(self.sock.recv(2), 'big')
 
@@ -108,20 +107,19 @@ class Server:
         }
 
         self.clients = {}
-        self.threads = {}
 
     def main(self, camera):
         self.camera = camera
 
         while True:
+            clientsocket, address = self.s.accept()
             if len(self.clients) < self.max_connections:
-                clientsocket, address = self.s.accept()
                 print(f'[INFO] Connection from {address} has been established.')
                 self.clients[address] = Client(self, clientsocket, address)
-                self.threads[address] = threading.Thread(target=self.clients[address].main, daemon=True)
-                self.threads[address].start()
-                if len(self.clients) == self.max_connections:
-                    print('[INFO] Maximum number of clients connected.')
+                threading.Thread(target=self.clients[address].main, daemon=True).start()
+            else:
+                print(f'[WARN] Denied client {address} from connecting.\
+                    Increase "max_connections" at risk of instability.')
 
     def frameReady(self):
         for a, c in self.clients.items():
