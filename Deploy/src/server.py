@@ -41,7 +41,6 @@ class Client:
 
                     objects = self.server.camera.objects
                     numObjects = len(objects)
-                    assert 0 <= numObjects < 2**16, f"Number of objects detected must be less than {2**16}."
                     self.sock.send(
                         int.to_bytes(self.server.commandDict['coords'], 2, 'big')+
                         int.to_bytes(numObjects, 2, 'big')
