@@ -32,8 +32,7 @@ while True:
         numObjects = int.from_bytes(s.recv(2), 'big')
         if numObjects > 0:
             buf = s.recv(numObjects*8)
-            for i, j in zip(buf[::2], buf[1::2]):
-                print(i*256+j)
+            print([int.from_bytes(b0+b1, 'big') for b0, b1 in zip(buf[::2], buf[1::2])])
         else:
             print("No balls.")
     elif command == 0x20: # Image stream
@@ -42,5 +41,8 @@ while True:
         while len(buf) < imgSize: # Accumulate bytes until buffer is full
             l = len(buf)
             buf += s.recv(BUF_SIZE if l < imgSize-BUF_SIZE else imgSize-l)
-        cv2.imshow('image', decode_jpeg(buf))
+        try:
+            cv2.imshow('image', decode_jpeg(buf))
+        except ValueError:
+            print('[ERR] Packet loss.')
         cv2.waitKey(1)

@@ -14,13 +14,16 @@ Client object represents socket stream with specific client.
 Handles send/recv with corresponding client socket.
 """
 class Client:
+    class InvalidCommandError(Exception):
+        pass
+
     def __init__(self, server, sock, addr):
         self.server, self.sock, self.addr = server, sock, addr
         self.sock.settimeout(10)
 
     def main(self):
-        while True:
-            try:
+        try:
+            while True:
                 # Receive command
                 command = int.from_bytes(self.sock.recv(2), 'big')
 
@@ -58,28 +61,39 @@ class Client:
                         int.to_bytes(self.server.camera.framejpeg.nbytes, 2, 'big')
                     )
                     self.sock.send(self.server.camera.framejpeg)
+                else:
+                    raise InvalidCommandError()
 
-            except ConnectionResetError:
-                print(f'[INFO] Client at address {self.addr} disconnected.')
-                del self.server.clients[self.addr]
-                return
+        except ConnectionResetError: # Socket closed
+            print(f'[INFO] Client at address {self.addr} disconnected.')
 
-            except socket.timeout:
-                print(f'[WATCHDOG] Client at address {self.addr} timed out, disconnecting.')
-                del self.server.clients[self.addr]
-                self.sock.close()
-                return
+        except BrokenPipeError: # Super bad socket error, means client is somehow still active but the socket is refusing packets.
+            print(f'[ERR] A fatal error occurred on client at address {self.addr}, reduce number of simultaneous connections.')
 
-            except Exception as e:
-                print(f'[ERR] An error occured while handling client at address {self.addr}:\n{type(e)}: {e}')
+        except InvalidCommandError: # Undefined command received
+            print(f'[Err] Invalid command received in client at address {self.addr}, could be due to bad packets.')
+
+        except socket.timeout: # Watchdog catch
+            print(f'[WATCHDOG] Client at address {self.addr} timed out, disconnecting.')
+
+        except Exception as e: # Any other error
+            print(f'[ERR] An error occured while handling client at address {self.addr}:\n{type(e)}: {e}')
+
+        finally:
+            # Terminate client thread
+            del self.server.clients[self.addr]
+            self.sock.close()
+            return
 
 """
 Server object accepts client connections as Client threads
 and keeps track of active connections
 """
 class Server:
-    def __init__(self, port):
+    def __init__(self, port, max_connections=5):
         print("Server starting...")
+        self.max_connections = max_connections
+
         self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.s.bind(('', port))
         self.s.listen()
@@ -97,10 +111,13 @@ class Server:
         self.camera = camera
 
         while True:
-            clientsocket, address = self.s.accept()
-            print(f'[INFO] Connection from {address} has been established.')
-            self.clients[address] = Client(self, clientsocket, address)
-            threading.Thread(target=self.clients[address].main, daemon=True).start()
+            if len(self.clients) <= self.max_connections:
+                clientsocket, address = self.s.accept()
+                print(f'[INFO] Connection from {address} has been established.')
+                self.clients[address] = Client(self, clientsocket, address)
+                threading.Thread(target=self.clients[address].main, daemon=True).start()
+                if len(self.clients) == self.max_connections:
+                    print('[INFO] Maximum number of clients connected.')
 
     def frameReady(self):
         for a, c in self.clients.items():
