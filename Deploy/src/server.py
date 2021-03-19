@@ -7,7 +7,7 @@ Adin Ackerman
 
 import threading
 import socket
-from PIL import Image
+import time
 
 """
 Client object represents socket stream with specific client.
@@ -24,6 +24,7 @@ class Client:
     def main(self):
         try:
             while True:
+                print(f'{self.addr} exists.')
                 # Receive command
                 command = int.from_bytes(self.sock.recv(2), 'big')
 
@@ -62,7 +63,7 @@ class Client:
                     )
                     self.sock.send(self.server.camera.framejpeg)
                 else:
-                    raise InvalidCommandError()
+                    raise Client.InvalidCommandError()
 
         except ConnectionResetError: # Socket closed
             print(f'[INFO] Client at address {self.addr} disconnected.')
@@ -70,7 +71,7 @@ class Client:
         except BrokenPipeError: # Super bad socket error, means client is somehow still active but the socket is refusing packets.
             print(f'[ERR] A fatal error occurred on client at address {self.addr}, reduce number of simultaneous connections.')
 
-        except InvalidCommandError: # Undefined command received
+        except Client.InvalidCommandError: # Undefined command received
             print(f'[Err] Invalid command received in client at address {self.addr}, could be due to bad packets.')
 
         except socket.timeout: # Watchdog catch
@@ -80,9 +81,10 @@ class Client:
             print(f'[ERR] An error occured while handling client at address {self.addr}:\n{type(e)}: {e}')
 
         finally:
+            time.sleep(0.1) # Stupid threads
             # Terminate client thread
-            del self.server.clients[self.addr]
             self.sock.close()
+            del self.server.clients[self.addr]
             return
 
 """
@@ -106,6 +108,7 @@ class Server:
         }
 
         self.clients = {}
+        self.threads = {}
 
     def main(self, camera):
         self.camera = camera
@@ -115,7 +118,8 @@ class Server:
                 clientsocket, address = self.s.accept()
                 print(f'[INFO] Connection from {address} has been established.')
                 self.clients[address] = Client(self, clientsocket, address)
-                threading.Thread(target=self.clients[address].main, daemon=True).start()
+                self.threads[address] = threading.Thread(target=self.clients[address].main, daemon=True)
+                self.threads[address].start()
                 if len(self.clients) == self.max_connections:
                     print('[INFO] Maximum number of clients connected.')
 
