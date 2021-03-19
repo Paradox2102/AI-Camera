@@ -94,7 +94,7 @@ class Camera:
                 # if the frame is available, draw bounding boxes on it and show the frame
                 if self.frame is not None:
                     with lock:
-                        self.objects = [] # Assist self.objects being referenced across threads safely
+                        self.objects = []
                         for detection in detections:
                             bbox = frame_norm(self.frame, (detection.xmin, detection.ymin, detection.xmax, detection.ymax))
                             cv2.rectangle(self.frame, (bbox[0], bbox[1]), (bbox[2], bbox[3]), (255, 0, 0), 2)
