@@ -111,7 +111,7 @@ class Server:
         self.camera = camera
 
         while True:
-            if len(self.clients) <= self.max_connections:
+            if len(self.clients) < self.max_connections:
                 clientsocket, address = self.s.accept()
                 print(f'[INFO] Connection from {address} has been established.')
                 self.clients[address] = Client(self, clientsocket, address)
