@@ -22,6 +22,8 @@ class Client:
         self.sock.settimeout(10)
 
     def main(self):
+        lock = threading.Lock()
+
         try:
             while True:
                 # Receive command
@@ -39,7 +41,6 @@ class Client:
 
                     objects = self.server.camera.objects
                     numObjects = len(objects)
-                    assert 0 <= numObjects < 2**16, f"Number of objects detected must be less than {2**16}."
                     self.sock.send(
                         int.to_bytes(self.server.commandDict['coords'], 2, 'big')+
                         int.to_bytes(numObjects, 2, 'big')
@@ -80,11 +81,11 @@ class Client:
             print(f'[ERR] An error occured while handling client at address {self.addr}:\n{type(e)}: {e}')
 
         finally:
-            time.sleep(0.1) # Stupid threads
-            # Terminate client thread
-            self.sock.close()
-            del self.server.clients[self.addr]
-            return
+            with lock:
+                # Terminate client thread
+                self.sock.close()
+                del self.server.clients[self.addr]
+                return
 
 """
 Server object accepts client connections as Client threads
