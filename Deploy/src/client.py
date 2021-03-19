@@ -24,7 +24,7 @@ commandDict = {
 
 while True:
     # Transmit
-    s.send(bytearray([0x00, commandDict[COMMAND]]))
+    s.send(int.to_bytes(commandDict[COMMAND], 2, 'big'))
 
     # Receive
     command = int.from_bytes(s.recv(2), 'big')
