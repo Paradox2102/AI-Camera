@@ -77,6 +77,10 @@ class Camera:
 
 
             while True:
+                if counter > 50:
+                    start_time = time.monotonic()
+                    counter = 0
+
                 # use blocking get() call to catch frame and inference result synced
                 in_rgb = q_rgb.get()
                 in_nn = q_nn.get()

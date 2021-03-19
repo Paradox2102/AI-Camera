@@ -92,7 +92,7 @@ Server object accepts client connections as Client threads
 and keeps track of active connections
 """
 class Server:
-    def __init__(self, port, max_connections=3):
+    def __init__(self, port, max_connections=2):
         print("Server starting...")
         self.max_connections = max_connections
 
