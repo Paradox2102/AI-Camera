@@ -19,6 +19,7 @@ then receives image data and NN inferences.
 class Camera:
     def __init__(self, server, modelName):
         self.server = server
+        self.lock = threading.Lock()
 
         mobilenet_path = str((Path(__file__).parent / Path(f'../models/{modelName}/frozen_inference_graph.blob')).resolve().absolute())
 
@@ -52,9 +53,25 @@ class Camera:
         self.texts = ['', "ball"]
 
         self.objects = []
+    
+    def setData(self, objects, frame):
+        with self.lock:
+            self.objects = objects
+            self.frame = frame
+        
+        for client in self.server.clients.values():
+            client.frameReady.release()
+        
+    
+    def getObjects(self):
+        with self.lock:
+            return self.objects
+    
+    def getFrame(self):
+        with self.lock:
+            return self.frame
 
     def main(self):
-        lock = threading.Lock()
         # Pipeline defined, now the device is connected to
         with dai.Device(self.pipeline) as device:
             # Start pipeline
@@ -67,7 +84,7 @@ class Camera:
             start_time = time.monotonic()
             counter = 0
             detections = []
-            self.frame = None
+            frame = None
 
             # nn data (bounding box locations) are in <0..1> range - they need to be normalized with frame width/height
             def frame_norm(frame, bbox):
@@ -87,32 +104,31 @@ class Camera:
 
 
                 if in_rgb is not None:
-                    self.frame = in_rgb.getCvFrame()
-                    cv2.putText(self.frame, "NN fps: {:.2f}".format(counter / (time.monotonic() - start_time)),
-                                (2, self.frame.shape[0] - 4), cv2.FONT_HERSHEY_TRIPLEX, 0.4, color=(255, 255, 255))
+                    frame = in_rgb.getCvFrame()
+                    cv2.putText(frame, "NN fps: {:.2f}".format(counter / (time.monotonic() - start_time)),
+                                (2, frame.shape[0] - 4), cv2.FONT_HERSHEY_TRIPLEX, 0.4, color=(255, 255, 255))
 
                 if in_nn is not None:
                     detections = in_nn.detections
                     counter += 1
 
                 # if the frame is available, draw bounding boxes on it and show the frame
-                if self.frame is not None:
-                    with lock:
-                        self.objects = []
-                        for detection in detections:
-                            bbox = frame_norm(self.frame, (detection.xmin, detection.ymin, detection.xmax, detection.ymax))
-                            cv2.rectangle(self.frame, (bbox[0], bbox[1]), (bbox[2], bbox[3]), (255, 0, 0), 2)
-                            cv2.putText(self.frame, self.texts[detection.label], (bbox[0] + 10, bbox[1] + 20),
-                                        cv2.FONT_HERSHEY_TRIPLEX, 0.5, 255)
-                            cv2.putText(self.frame, f"{int(detection.confidence*100)}%", (bbox[0] + 10, bbox[1] + 40),
-                                        cv2.FONT_HERSHEY_TRIPLEX, 0.5, 255)
+                if frame is not None:
+                    objectBuf = []
+                    for detection in detections:
+                        bbox = frame_norm(frame, (detection.xmin, detection.ymin, detection.xmax, detection.ymax))
+                        cv2.rectangle(frame, (bbox[0], bbox[1]), (bbox[2], bbox[3]), (255, 0, 0), 2)
+                        cv2.putText(frame, self.texts[detection.label], (bbox[0] + 10, bbox[1] + 20),
+                                    cv2.FONT_HERSHEY_TRIPLEX, 0.5, 255)
+                        cv2.putText(frame, f"{int(detection.confidence*100)}%", (bbox[0] + 10, bbox[1] + 40),
+                                    cv2.FONT_HERSHEY_TRIPLEX, 0.5, 255)
 
-                            self.objects.append([int(i*300) for i in [detection.xmin, detection.ymin, detection.xmax, detection.ymax]])
+                        objectBuf.append([int(i*300) for i in [detection.xmin, detection.ymin, detection.xmax, detection.ymax]])
 
-                        # cv2.imshow("rgb", self.frame)
-                        self.framejpeg = memoryview(encode_jpeg(self.frame, 50)) # Casting the encoded JPEG as a memoryview
+                    # cv2.imshow("rgb", self.frame)
+                    framejpeg = memoryview(encode_jpeg(frame, 50)) # Casting the encoded JPEG as a memoryview
                                                                                  # allows for cheap byte management
-                    self.server.frameReady() # Inform the server that the next frame is ready
+                    self.setData(objectBuf, framejpeg) # Inform the server that the next frame is ready
 
                 if cv2.waitKey(1) == ord('q'):
                     break

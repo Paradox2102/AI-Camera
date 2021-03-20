@@ -10,7 +10,7 @@ from simplejpeg import decode_jpeg
 import cv2
 
 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-s.connect(('192.168.86.23', 1234))
+s.connect(('localhost', 1234))
 
 # Configurable constants
 BUF_SIZE = 2048
@@ -24,7 +24,7 @@ commandDict = {
 
 while True:
     # Transmit
-    s.send(int.to_bytes(commandDict[COMMAND], 2, 'big'))
+    s.send(bytearray([0x00, commandDict[COMMAND]]))
 
     # Receive
     command = int.from_bytes(s.recv(2), 'big')

@@ -20,10 +20,11 @@ class Client:
     def __init__(self, server, sock, addr):
         self.server, self.sock, self.addr = server, sock, addr
         self.sock.settimeout(10)
+        
+        self.lock = threading.Lock()
+        self.frameReady = threading.Semaphore(0)
 
     def main(self):
-        lock = threading.Lock()
-
         try:
             while True:
                 # Receive command
@@ -35,11 +36,10 @@ class Client:
 
                 # Send coords
                 elif command == self.server.commandDict['coords']:
-                    self.waiting = True
-                    while self.waiting:
-                        pass
+                    self.frameReady.acquire(False)
+                    self.frameReady.acquire()
 
-                    objects = self.server.camera.objects
+                    objects = self.server.camera.getObjects()
                     numObjects = len(objects)
                     self.sock.send(
                         int.to_bytes(self.server.commandDict['coords'], 2, 'big')+
@@ -53,15 +53,16 @@ class Client:
 
                 # Image stream
                 elif command == self.server.commandDict['image']:
-                    self.waiting = True
-                    while self.waiting:
-                        pass
+                    self.frameReady.acquire(False)
+                    self.frameReady.acquire()
+                    
+                    frame = self.server.camera.getFrame()
 
                     self.sock.send(
                         int.to_bytes(self.server.commandDict['image'], 2, 'big')+
-                        int.to_bytes(self.server.camera.framejpeg.nbytes, 2, 'big')
+                        int.to_bytes(frame.nbytes, 2, 'big')
                     )
-                    self.sock.send(self.server.camera.framejpeg)
+                    self.sock.send(frame)
                 else:
                     raise Client.InvalidCommandError()
 
@@ -81,7 +82,7 @@ class Client:
             print(f'[ERR] An error occured while handling client at address {self.addr}:\n{type(e)}: {e}')
 
         finally:
-            with lock:
+            with self.lock:
                 # Terminate client thread
                 self.sock.close()
                 del self.server.clients[self.addr]
@@ -92,7 +93,7 @@ Server object accepts client connections as Client threads
 and keeps track of active connections
 """
 class Server:
-    def __init__(self, port, max_connections=2):
+    def __init__(self, port, max_connections=3):
         print("Server starting...")
         self.max_connections = max_connections
 
