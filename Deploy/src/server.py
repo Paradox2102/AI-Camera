@@ -5,6 +5,7 @@ and transmit image/object detection data.
 Adin Ackerman
 """
 
+import sys
 import threading
 import socket
 import time
@@ -20,8 +21,7 @@ class Client:
     def __init__(self, server, sock, addr):
         self.server, self.sock, self.addr = server, sock, addr
         self.sock.settimeout(10)
-        
-        self.lock = threading.Lock()
+
         self.frameReady = threading.Semaphore(0)
 
     def main(self):
@@ -55,7 +55,7 @@ class Client:
                 elif command == self.server.commandDict['image']:
                     self.frameReady.acquire(False)
                     self.frameReady.acquire()
-                    
+
                     frame = self.server.camera.getFrame()
 
                     self.sock.send(
@@ -82,11 +82,11 @@ class Client:
             print(f'[ERR] An error occured while handling client at address {self.addr}:\n{type(e)}: {e}')
 
         finally:
-            with self.lock:
-                # Terminate client thread
-                self.sock.close()
-                del self.server.clients[self.addr]
-                return
+            sys.stdout.flush()
+            # Terminate client thread
+            self.sock.close()
+            del self.server.clients[self.addr]
+            return
 
 """
 Server object accepts client connections as Client threads
@@ -122,7 +122,3 @@ class Server:
             else:
                 print(f'[WARN] Denied client {address} from connecting.\
                     Increase "max_connections" at risk of instability.')
-
-    def frameReady(self):
-        for a, c in self.clients.items():
-            c.waiting = False
