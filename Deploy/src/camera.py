@@ -53,20 +53,20 @@ class Camera:
         self.texts = ['', "ball"]
 
         self.objects = []
-    
+
     def setData(self, objects, frame):
         with self.lock:
             self.objects = objects
             self.frame = frame
-        
+
         for client in self.server.clients.values():
             client.frameReady.release()
-        
-    
+
+
     def getObjects(self):
         with self.lock:
             return self.objects
-    
+
     def getFrame(self):
         with self.lock:
             return self.frame
@@ -88,10 +88,9 @@ class Camera:
 
             # nn data (bounding box locations) are in <0..1> range - they need to be normalized with frame width/height
             def frame_norm(frame, bbox):
-                norm_vals = np.full(len(bbox), self.frame.shape[0])
-                norm_vals[::2] = self.frame.shape[1]
+                norm_vals = np.full(len(bbox), frame.shape[0])
+                norm_vals[::2] = frame.shape[1]
                 return (np.clip(np.array(bbox), 0, 1) * norm_vals).astype(int)
-
 
             while True:
                 if counter > 50:
@@ -101,7 +100,6 @@ class Camera:
                 # use blocking get() call to catch frame and inference result synced
                 in_rgb = q_rgb.get()
                 in_nn = q_nn.get()
-
 
                 if in_rgb is not None:
                     frame = in_rgb.getCvFrame()
