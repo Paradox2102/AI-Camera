@@ -21,7 +21,7 @@ class Client:
     def __init__(self, server, sock, addr):
         self.server, self.sock, self.addr = server, sock, addr
         self.sock.settimeout(10)
-
+        
         self.frameReady = threading.Semaphore(0)
 
     def main(self):
@@ -55,7 +55,7 @@ class Client:
                 elif command == self.server.commandDict['image']:
                     self.frameReady.acquire(False)
                     self.frameReady.acquire()
-
+                    
                     frame = self.server.camera.getFrame()
 
                     self.sock.send(

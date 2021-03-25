@@ -17,8 +17,9 @@ Camera object initializes the OAK-D camera,
 then receives image data and NN inferences.
 """
 class Camera:
-    def __init__(self, server, modelName):
+    def __init__(self, server, modelName, modelSize):
         self.server = server
+        self.modelSize = modelSize
         self.lock = threading.Lock()
 
         mobilenet_path = str((Path(__file__).parent / Path(f'../models/{modelName}/frozen_inference_graph.blob')).resolve().absolute())
@@ -28,7 +29,7 @@ class Camera:
 
         # Define a source - color camera
         cam_rgb = self.pipeline.createColorCamera()
-        cam_rgb.setPreviewSize(400, 225)
+        cam_rgb.setPreviewSize(*modelSize)
         cam_rgb.setInterleaved(False)
         cam_rgb.setFps(90)
 
@@ -42,12 +43,16 @@ class Camera:
 
         # Create outputs
         xout_rgb = self.pipeline.createXLinkOut()
-        xout_rgb.setStreamName("rgb")
+        xout_rgb.setStreamName('rgb')
+        controlIn = self.pipeline.createXLinkIn()
+        controlIn.setStreamName("control")
         detection_nn.passthrough.link(xout_rgb.input)
 
         xout_nn = self.pipeline.createXLinkOut()
         xout_nn.setStreamName("nn")
         detection_nn.out.link(xout_nn.input)
+
+        controlIn.out.link(cam_rgb.inputControl)
 
         # MobilenetSSD label texts
         self.texts = ['', "ball"]
@@ -76,6 +81,10 @@ class Camera:
         with dai.Device(self.pipeline) as device:
             # Start pipeline
             device.startPipeline()
+            controlQueue = device.getInputQueue('control')
+            ctrl = dai.CameraControl()
+            ctrl.setManualExposure(5_000, 1000)
+            controlQueue.send(ctrl)
 
             # Output queues will be used to get the rgb frames and nn data from the outputs defined above
             q_rgb = device.getOutputQueue(name="rgb", maxSize=4, blocking=False)
@@ -121,7 +130,7 @@ class Camera:
                         cv2.putText(frame, f"{int(detection.confidence*100)}%", (bbox[0] + 10, bbox[1] + 40),
                                     cv2.FONT_HERSHEY_TRIPLEX, 0.5, 255)
 
-                        objectBuf.append([int(i*300) for i in [detection.xmin, detection.ymin, detection.xmax, detection.ymax]])
+                        objectBuf.append([int(i) for i in [detection.xmin*self.modelSize[0], detection.ymin*self.modelSize[1], detection.xmax*self.modelSize[0], detection.ymax*self.modelSize[1]]])
 
                     # cv2.imshow("rgb", self.frame)
                     framejpeg = memoryview(encode_jpeg(frame, 50)) # Casting the encoded JPEG as a memoryview
@@ -130,3 +139,4 @@ class Camera:
 
                 if cv2.waitKey(1) == ord('q'):
                     break
+
