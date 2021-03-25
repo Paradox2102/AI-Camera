@@ -21,7 +21,7 @@ class Client:
     def __init__(self, server, sock, addr):
         self.server, self.sock, self.addr = server, sock, addr
         self.sock.settimeout(10)
-        
+
         self.frameReady = threading.Semaphore(0)
 
     def main(self):
@@ -55,7 +55,7 @@ class Client:
                 elif command == self.server.commandDict['image']:
                     self.frameReady.acquire(False)
                     self.frameReady.acquire()
-                    
+
                     frame = self.server.camera.getFrame()
 
                     self.sock.send(
@@ -63,6 +63,32 @@ class Client:
                         int.to_bytes(frame.nbytes, 2, 'big')
                     )
                     self.sock.send(frame)
+
+                elif command == self.server.commandDict['take-picture']:
+                    try:
+                        self.server.camera.saveFrame()
+                    except Exception as e:
+                        print(f'[ERR] {str(type(e))}: {str(e)}')
+                        self.sock.send(int.to_bytes(self.server.commandDict['failure'], 2, 'big'))
+                        continue
+
+                    self.sock.send(int.to_bytes(self.server.commandDict['success'], 2, 'big'))
+
+                elif command == self.server.commandDict['overlay']:
+                    try:
+                        self.server.camera.overlay = int.from_bytes(self.sock.recv(2), 'big')
+                    except Exception as e:
+                        print(f'[ERR] {str(type(e))}: {str(e)}')
+                        self.sock.send(int.to_bytes(self.server.commandDict['failure'], 2, 'big'))
+                        continue
+
+                elif command == self.server.commandDict['m_exposure']:
+                    buf = self.sock.recv(4)
+                    self.server.camera.exposure = int.from_bytes(buf[:2], 'big'), int.from_bytes(buf[2:], 'big')
+
+                elif command == self.server.commandDict['a_exposure']:
+                    self.server.camera.exposure = None
+
                 else:
                     raise Client.InvalidCommandError()
 
@@ -77,9 +103,6 @@ class Client:
 
         except socket.timeout: # Watchdog catch
             print(f'[WATCHDOG] Client at address {self.addr} timed out, disconnecting.')
-
-        except Exception as e: # Any other error
-            print(f'[ERR] An error occured while handling client at address {self.addr}:\n{type(e)}: {e}')
 
         finally:
             sys.stdout.flush()
@@ -105,6 +128,14 @@ class Server:
         self.commandDict = {
             'coords': 0x10,
             'image': 0x20,
+            'take-picture': 0x30,
+            'overlay': 0x40,
+            'm_exposure': 0x50,
+            'a_exposure': 0x51,
+            'm_focus': 0x60,
+            'a_focus': 0x61,
+            'success': 0xF0,
+            'failure': 0x0F,
             'no-op': 0xFFFF
         }
 
@@ -118,7 +149,7 @@ class Server:
             if len(self.clients) < self.max_connections:
                 print(f'[INFO] Connection from {address} has been established.')
                 self.clients[address] = Client(self, clientsocket, address)
-                threading.Thread(target=self.clients[address].main, daemon=True).start()
+                threading.Thread(target=self.clients[address].main, name=str(address[1]), daemon=True).start()
             else:
                 print(f'[WARN] Denied client {address} from connecting.\
                     Increase "max_connections" at risk of instability.')

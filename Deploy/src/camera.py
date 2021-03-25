@@ -4,6 +4,8 @@ Camera related stuff.
 Adapted from https://docs.luxonis.com/projects/api/en/latest/samples/08_rgb_mobilenet/
 """
 
+import os
+import re
 import threading
 from pathlib import Path
 import cv2
@@ -17,9 +19,11 @@ Camera object initializes the OAK-D camera,
 then receives image data and NN inferences.
 """
 class Camera:
-    def __init__(self, server, modelName, modelSize):
+    def __init__(self, server, modelName, modelSize, overlay=True):
         self.server = server
         self.modelSize = modelSize
+        self.overlay = overlay
+        self.imgCount = 0
         self.lock = threading.Lock()
 
         mobilenet_path = str((Path(__file__).parent / Path(f'../models/{modelName}/frozen_inference_graph.blob')).resolve().absolute())
@@ -67,7 +71,6 @@ class Camera:
         for client in self.server.clients.values():
             client.frameReady.release()
 
-
     def getObjects(self):
         with self.lock:
             return self.objects
@@ -76,15 +79,52 @@ class Camera:
         with self.lock:
             return self.frame
 
+    @property
+    def exposure(self):
+        return None
+
+    @exposure.setter
+    def exposure(self, val):
+        if val == None:
+            self.ctrl.setAutoExposureEnable()
+        else:
+            self.ctrl.setManualExposure(*val)
+
+        self.controlQueue.send(ctrl)
+
+    @property
+    def focus(self):
+        return None
+
+    @focus.setter
+    def focus(self, val):
+        if val == None:
+            self.ctrl.setAutoFocusMode(dai.CameraControl.AutoFocusMode.CONTINUOUS_VIDEO)
+        else:
+            self.ctrl.setManualFocus(lensPos)
+        self.controlQueue.send(ctrl)
+
+    def saveFrame(self):
+        with self.lock:
+            prev = os.listdir('../images')
+            if len(prev) > 0:
+                num = re.search(
+                    r'\d+$',
+                    prev[-1].split('.')[-2]
+                ).group()
+
+                self.imgCount = num + 1
+
+            cv2.imsave(f'../images/{self.imgCount}.png', self.frame)
+            self.imgCount += 1
+
     def main(self):
         # Pipeline defined, now the device is connected to
         with dai.Device(self.pipeline) as device:
             # Start pipeline
             device.startPipeline()
-            controlQueue = device.getInputQueue('control')
-            ctrl = dai.CameraControl()
-            ctrl.setManualExposure(5_000, 1000)
-            controlQueue.send(ctrl)
+            self.controlQueue = device.getInputQueue('control')
+            self.ctrl = dai.CameraControl()
 
             # Output queues will be used to get the rgb frames and nn data from the outputs defined above
             q_rgb = device.getOutputQueue(name="rgb", maxSize=4, blocking=False)
@@ -110,7 +150,7 @@ class Camera:
                 in_rgb = q_rgb.get()
                 in_nn = q_nn.get()
 
-                if in_rgb is not None:
+                if in_rgb is not None and self.overlay:
                     frame = in_rgb.getCvFrame()
                     cv2.putText(frame, "NN fps: {:.2f}".format(counter / (time.monotonic() - start_time)),
                                 (2, frame.shape[0] - 4), cv2.FONT_HERSHEY_TRIPLEX, 0.4, color=(255, 255, 255))
@@ -124,19 +164,20 @@ class Camera:
                     objectBuf = []
                     for detection in detections:
                         bbox = frame_norm(frame, (detection.xmin, detection.ymin, detection.xmax, detection.ymax))
-                        cv2.rectangle(frame, (bbox[0], bbox[1]), (bbox[2], bbox[3]), (255, 0, 0), 2)
-                        cv2.putText(frame, self.texts[detection.label], (bbox[0] + 10, bbox[1] + 20),
-                                    cv2.FONT_HERSHEY_TRIPLEX, 0.5, 255)
-                        cv2.putText(frame, f"{int(detection.confidence*100)}%", (bbox[0] + 10, bbox[1] + 40),
-                                    cv2.FONT_HERSHEY_TRIPLEX, 0.5, 255)
+                        if self.overlay:
+                            cv2.rectangle(frame, (bbox[0], bbox[1]), (bbox[2], bbox[3]), (255, 0, 0), 2)
+                            cv2.putText(frame, self.texts[detection.label], (bbox[0] + 10, bbox[1] + 20),
+                                        cv2.FONT_HERSHEY_TRIPLEX, 0.5, 255)
+                            cv2.putText(frame, f"{int(detection.confidence*100)}%", (bbox[0] + 10, bbox[1] + 40),
+                                        cv2.FONT_HERSHEY_TRIPLEX, 0.5, 255)
 
                         objectBuf.append([int(i) for i in [detection.xmin*self.modelSize[0], detection.ymin*self.modelSize[1], detection.xmax*self.modelSize[0], detection.ymax*self.modelSize[1]]])
 
+                    self.frame = frame
                     # cv2.imshow("rgb", self.frame)
                     framejpeg = memoryview(encode_jpeg(frame, 50)) # Casting the encoded JPEG as a memoryview
-                                                                                 # allows for cheap byte management
+                                                                   # allows for cheap byte management
                     self.setData(objectBuf, framejpeg) # Inform the server that the next frame is ready
 
                 if cv2.waitKey(1) == ord('q'):
                     break
-
