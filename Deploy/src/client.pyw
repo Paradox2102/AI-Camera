@@ -360,7 +360,7 @@ hLabel.pack(side=LEFT, padx=5)
 
 ipEntry = Entry(header1, width=15)
 ipEntry.pack(side=LEFT, padx=5)
-ipEntry.insert(END, '192.168.86.25')
+ipEntry.insert(END, '10.21.2.50')
 
 portEntry = Entry(header1, width=8)
 portEntry.pack(side=LEFT, padx=5)
