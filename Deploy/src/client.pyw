@@ -68,8 +68,10 @@ class Client:
         except TimeoutError as e:
             statusTextLabel['foreground'] = 'red'
             statusTextVar.set(str(e))
-            del self
+            self = None
             return
+
+        self.running = True
 
         self.imageStream()
 
@@ -77,6 +79,11 @@ class Client:
         viewImageStatus.set('Close image stream')
         try:
             while True:
+                if not self.running:
+                    self.s.close()
+                    viewImageStatus.set("View image stream")
+                    cv2.destroyAllWindows()
+                    return
                 # Transmit
                 self.s.send(int.to_bytes(self.commandDict['image'], 2, 'big'))
 
@@ -96,15 +103,19 @@ class Client:
                         l = len(buf)
                         buf += self.s.recv(self.BUF_SIZE if l < imgSize-self.BUF_SIZE else imgSize-l)
                     try:
-                        cv2.imshow('image', decode_jpeg(buf))
+                        cv2.imshow('image', cv2.resize(decode_jpeg(buf), (800,450)))
                     except ValueError:
                         statusTextLabel['foreground'] = 'red'
                         statusTextVar.set("Packet loss.")
-                    if cv2.waitKey(1) == ord('q'):
-                        return
+                    cv2.waitKey(1)
         except Exception as e:
             statusTextLabel['foreground'] = 'red'
             statusTextVar.set(str(e))
+
+            viewImageStatus.set("View image stream")
+
+            self.s.close()
+            self = None
 
     def transact(self, word, data=None):
         assert type(word) == str, "Word must be of type 'str'"
@@ -128,16 +139,16 @@ class Client:
             return str(e)
 
     def _keepalive(self):
-        # try:
-        while True:
-            sleep(3)
-            with self.lock:
-                if not self.running:
-                    return
-                self.s.send(int.to_bytes(self.commandDict['no-op'], 2, 'big'))
-        # except Exception as e:
-        #     statusTextLabel['foreground'] = 'red'
-        #     statusTextVar.set(str(e))
+        try:
+            while True:
+                sleep(3)
+                with self.lock:
+                    if not self.running:
+                        return
+                    self.s.send(int.to_bytes(self.commandDict['no-op'], 2, 'big'))
+        except Exception as e:
+            statusTextLabel['foreground'] = 'red'
+            statusTextVar.set(str(e))
 
 
 def connect():
@@ -156,41 +167,45 @@ def disconnect():
     client.s.close()
     client = None
 
+    try:
+        closeImageStream()
+    except NameError:
+        pass
+
     for item in [hLabel, ipEntry, portEntry]:
         item['state'] = 'enabled'
+
+    for item in [autoExposure, autoFocus, overlay, viewImage, takePicture]:
+        item['state'] = 'disabled'
 
     connectButton['command'] = connect
     connectStatus.set('Connect')
 
-def updateStates():
+def sendAutoExposure():
     if autoExposureState.get():
-        sendAutoExposure()
         exposureEntry['state'] = 'disabled'
         isoEntry['state'] = 'disabled'
+        exposureLabel['state'] = 'disabled'
+        isoLabel['state'] = 'disabled'
+
+        result = client.transact(
+            'a_exposure'
+        )
+
+        if result == client.commandDict['success']:
+            statusTextLabel['foreground'] = 'green'
+            statusTextVar.set("Auto exposure enabled successfully.")
+        elif result == client.commandDict['failure']:
+            statusTextLabel['foreground'] = 'red'
+            statusTextVar.set("Failed to enable auto exposure.")
+        else:
+            statusTextLabel['foreground'] = 'red'
+            statusTextVar.set(f"Socket communication out of sync. {result}")
     else:
         exposureEntry['state'] = 'enabled'
         isoEntry['state'] = 'enabled'
-
-    if autoFocusState.get():
-        sendAutoFocus()
-        focusEntry['state'] = 'disabled'
-    else:
-        focusEntry['state'] = 'enabled'
-
-def sendAutoExposure():
-    result = client.transact(
-        'a_exposure'
-    )
-
-    if result == client.commandDict['success']:
-        statusTextLabel['foreground'] = 'green'
-        statusTextVar.set("Auto exposure enabled successfully.")
-    elif result == client.commandDict['failure']:
-        statusTextLabel['foreground'] = 'red'
-        statusTextVar.set("Failed to enable auto exposure.")
-    else:
-        statusTextLabel['foreground'] = 'red'
-        statusTextVar.set(f"Socket communication out of sync. {result}")
+        exposureLabel['state'] = 'enabled'
+        isoLabel['state'] = 'enabled'
 
 def sendManualExposure():
     result = client.transact(
@@ -210,19 +225,26 @@ def sendManualExposure():
         statusTextVar.set("Socket communication out of sync.")
 
 def sendAutoFocus():
-    result = client.transact(
-        'a_focus'
-    )
+    if autoFocusState.get():
+        focusEntry['state'] = 'disabled'
+        focusLabel['state'] = 'disabled'
 
-    if result == client.commandDict['success']:
-        statusTextLabel['foreground'] = 'green'
-        statusTextVar.set("Auto focus enabled successfully.")
-    elif result == client.commandDict['failure']:
-        statusTextLabel['foreground'] = 'red'
-        statusTextVar.set("Failed to enable auto focus.")
+        result = client.transact(
+            'a_focus'
+        )
+
+        if result == client.commandDict['success']:
+            statusTextLabel['foreground'] = 'green'
+            statusTextVar.set("Auto focus enabled successfully.")
+        elif result == client.commandDict['failure']:
+            statusTextLabel['foreground'] = 'red'
+            statusTextVar.set("Failed to enable auto focus.")
+        else:
+            statusTextLabel['foreground'] = 'red'
+            statusTextVar.set(f"Socket communication out of sync. {result}")
     else:
-        statusTextLabel['foreground'] = 'red'
-        statusTextVar.set(f"Socket communication out of sync. {result}")
+        focusEntry['state'] = 'enabled'
+        focusLabel['state'] = 'enabled'
 
 def sendManualFocus():
     result = client.transact(
@@ -272,6 +294,7 @@ def takePictureMethod():
         statusTextVar.set("Socket communication out of sync.")
 
 def startImageStream():
+    global imageClient
     imageClient = Client()
 
     threading.Thread(
@@ -279,6 +302,13 @@ def startImageStream():
             ipEntry.get(), int(portEntry.get())
         )
     ).start()
+
+    viewImage['command'] = closeImageStream
+
+def closeImageStream():
+    imageClient.running = False
+
+    viewImage['command'] = startImageStream
 
 # set up gui
 root = Tk()
@@ -315,7 +345,7 @@ hLabel.pack(side=LEFT, padx=5)
 
 ipEntry = Entry(header1, width=15)
 ipEntry.pack(side=LEFT, padx=5)
-ipEntry.insert(END, '10.21.2.50')
+ipEntry.insert(END, '192.168.86.25')
 
 portEntry = Entry(header1, width=8)
 portEntry.pack(side=LEFT, padx=5)
@@ -346,6 +376,7 @@ exposureEntry = Entry(
 )
 exposureEntry.pack(side=RIGHT, padx=5)
 exposureEntry.insert(END, '10000')
+exposureEntry.bind('<Return>', lambda x: sendManualExposure())
 
 isoLabel = Label(
     isoFrame,
@@ -362,14 +393,14 @@ isoEntry = Entry(
 )
 isoEntry.pack(side=RIGHT, padx=5)
 isoEntry.insert(END, '300')
+isoEntry.bind('<Return>', lambda x: sendManualExposure())
 
 autoExposureState = IntVar()
 autoExposure = Checkbutton(
     body,
     text='Auto Exposure',
-    state='disable',
     variable=autoExposureState,
-    command=updateStates
+    command=sendAutoExposure
 )
 autoExposure.grid(row=0, column=0, sticky='W')
 
@@ -384,14 +415,14 @@ focusLabel.pack(side=LEFT, padx=5)
 focusEntry = Entry(focusFrame, width=15, state='disable')
 focusEntry.pack(side=RIGHT, padx=5)
 focusEntry.insert(END, '10000')
+focusEntry.bind('<Return>', lambda x: sendManualFocus())
 
 autoFocusState = IntVar()
 autoFocus = Checkbutton(
     body,
     text='Auto Focus',
-    state='disable',
     variable=autoFocusState,
-    command=updateStates
+    command=sendAutoFocus
 )
 autoFocus.grid(row=0, column=1, sticky='W')
 
@@ -399,7 +430,6 @@ overlayState = IntVar()
 overlay = Checkbutton(
     body,
     text='Overlay',
-    state='disable',
     variable=overlayState,
     command=sendOverlay
 )
@@ -435,5 +465,9 @@ statusTextLabel = Label(
     wraplength=450
 )
 statusTextLabel.pack(side=TOP, padx=5, pady=5)
+
+for item in [autoExposure, autoFocus, overlay]:
+    item.invoke()
+    item['state'] = 'disabled'
 
 mainloop()

@@ -90,9 +90,10 @@ class Camera:
         if val == None:
             self.ctrl.setAutoExposureEnable()
         else:
+            self.ctrl = dai.CameraControl()
             self.ctrl.setManualExposure(*val)
 
-        self.controlQueue.send(ctrl)
+        self.controlQueue.send(self.ctrl)
 
     @property
     def focus(self):
@@ -103,8 +104,8 @@ class Camera:
         if val == None:
             self.ctrl.setAutoFocusMode(dai.CameraControl.AutoFocusMode.CONTINUOUS_VIDEO)
         else:
-            self.ctrl.setManualFocus(lensPos)
-        self.controlQueue.send(ctrl)
+            self.ctrl.setManualFocus(val)
+        self.controlQueue.send(self.ctrl)
 
     def saveFrame(self):
         with self.lock:

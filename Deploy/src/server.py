@@ -88,17 +88,45 @@ class Client:
                 elif command == self.server.commandDict['m_exposure']:
                     l = self.sock.recv(2)
                     buf = self.sock.recv(4)
-                    self.server.camera.exposure = int.from_bytes(buf[:2], 'big'), int.from_bytes(buf[2:], 'big')
+                    try:
+                        self.server.camera.exposure = int.from_bytes(buf[:2], 'big'), int.from_bytes(buf[2:], 'big')
+                    except Exception as e:
+                        print(f'[ERR] {str(type(e))}: {str(e)}')
+                        self.sock.send(int.to_bytes(self.server.commandDict['failure'], 2, 'big'))
+                        continue
+
+                    self.sock.send(int.to_bytes(self.server.commandDict['success'], 2, 'big'))
 
                 elif command == self.server.commandDict['a_exposure']:
-                    self.server.camera.exposure = None
+                    try:
+                        self.server.camera.exposure = None
+                    except Exception as e:
+                        print(f'[ERR] {str(type(e))}: {str(e)}')
+                        self.sock.send(int.to_bytes(self.server.commandDict['failure'], 2, 'big'))
+                        continue
+
+                    self.sock.send(int.to_bytes(self.server.commandDict['success'], 2, 'big'))
 
                 elif command == self.server.commandDict['m_focus']:
                     l = self.sock.recv(2)
-                    self.server.camera.exposure = int.from_bytes(self.sock.recv(2), 'big')
+                    try:
+                        self.server.camera.focus = int.from_bytes(self.sock.recv(2), 'big')
+                    except Exception as e:
+                        print(f'[ERR] {str(type(e))}: {str(e)}')
+                        self.sock.send(int.to_bytes(self.server.commandDict['failure'], 2, 'big'))
+                        continue
+
+                    self.sock.send(int.to_bytes(self.server.commandDict['success'], 2, 'big'))
 
                 elif command == self.server.commandDict['a_focus']:
-                    self.server.camera.focus = None
+                    try:
+                        self.server.camera.focus = None
+                    except Exception as e:
+                        print(f'[ERR] {str(type(e))}: {str(e)}')
+                        self.sock.send(int.to_bytes(self.server.commandDict['failure'], 2, 'big'))
+                        continue
+
+                    self.sock.send(int.to_bytes(self.server.commandDict['success'], 2, 'big'))
 
                 else:
                     raise Client.InvalidCommandError()
