@@ -82,12 +82,20 @@ class Client:
                         self.sock.send(int.to_bytes(self.server.commandDict['failure'], 2, 'big'))
                         continue
 
+                    self.sock.send(int.to_bytes(self.server.commandDict['success'], 2, 'big'))
+
                 elif command == self.server.commandDict['m_exposure']:
                     buf = self.sock.recv(4)
                     self.server.camera.exposure = int.from_bytes(buf[:2], 'big'), int.from_bytes(buf[2:], 'big')
 
                 elif command == self.server.commandDict['a_exposure']:
                     self.server.camera.exposure = None
+
+                elif command == self.server.commandDict['m_focus']:
+                    self.server.camera.exposure = int.from_bytes(self.sock.recv(2), 'big')
+
+                elif command == self.server.commandDict['a_focus']:
+                    self.server.camera.focus = None
 
                 else:
                     raise Client.InvalidCommandError()

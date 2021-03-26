@@ -150,10 +150,11 @@ class Camera:
                 in_rgb = q_rgb.get()
                 in_nn = q_nn.get()
 
-                if in_rgb is not None and self.overlay:
+                if in_rgb is not None:
                     frame = in_rgb.getCvFrame()
-                    cv2.putText(frame, "NN fps: {:.2f}".format(counter / (time.monotonic() - start_time)),
-                                (2, frame.shape[0] - 4), cv2.FONT_HERSHEY_TRIPLEX, 0.4, color=(255, 255, 255))
+                    if self.overlay:
+                        cv2.putText(frame, "NN fps: {:.2f}".format(counter / (time.monotonic() - start_time)),
+                                    (2, frame.shape[0] - 4), cv2.FONT_HERSHEY_TRIPLEX, 0.4, color=(255, 255, 255))
 
                 if in_nn is not None:
                     detections = in_nn.detections

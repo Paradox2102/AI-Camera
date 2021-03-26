@@ -52,9 +52,14 @@ class Client:
         connectStatus.set('Disconnect')
         connectButton['command'] = disconnect
 
+        self.running = True
+
         threading.Thread(
             target=self._keepalive
         ).start()
+
+        for item in [autoExposure, autoFocus, overlay, viewImage, takePicture]:
+            item['state'] = 'enabled'
 
     def connectStream(self, ip, port=1234):
         try:
@@ -73,18 +78,18 @@ class Client:
         try:
             while True:
                 # Transmit
-                self.s.send(int.to_bytes(commandDict['image'], 2, 'big'))
+                self.s.send(int.to_bytes(self.commandDict['image'], 2, 'big'))
 
                 # Receive
                 command = int.from_bytes(self.s.recv(2), 'big')
-                if command == client.commandDict['coords']: # Coordinates
+                if command == self.commandDict['coords']: # Coordinates
                     numObjects = int.from_bytes(self.s.recv(2), 'big')
                     if numObjects > 0:
                         buf = self.s.recv(numObjects*8)
                         print([int.from_bytes(b0+b1, 'big') for b0, b1 in zip(buf[::2], buf[1::2])])
                     else:
                         print("No balls.")
-                elif command == client.commandDict['image']: # Image stream
+                elif command == self.commandDict['image']: # Image stream
                     imgSize = int.from_bytes(self.s.recv(2), 'big')
                     buf = bytearray()
                     while len(buf) < imgSize: # Accumulate bytes until buffer is full
@@ -102,13 +107,15 @@ class Client:
             statusTextVar.set(str(e))
 
     def transact(self, word, data=None):
+        assert type(word) == str, "Word must be of type 'str'"
+        assert data is None or type(data) == bytes
         try:
             with self.lock:
                 # Transmit
-                self.s.send(int.to_bytes(commandDict[word], 2, 'big'))
+                self.s.send(int.to_bytes(self.commandDict[word], 2, 'big'))
 
                 if data != None:
-                    self.s.send(len(data))
+                    self.s.send(int.to_bytes(len(data), 2, 'big'))
                     self.s.send(data)
 
                 # Receive
@@ -118,16 +125,19 @@ class Client:
         except Exception as e:
             statusTextLabel['foreground'] = 'red'
             statusTextVar.set(str(e))
+            return str(e)
 
     def _keepalive(self):
-        try:
-            while True:
-                sleep(3)
-                with self.lock:
-                    self.s.send(int.to_bytes(self.commandDict['no-op'], 2, 'big'))
-        except Exception as e:
-            statusTextLabel['foreground'] = 'red'
-            statusTextVar.set(str(e))
+        # try:
+        while True:
+            sleep(3)
+            with self.lock:
+                if not self.running:
+                    return
+                self.s.send(int.to_bytes(self.commandDict['no-op'], 2, 'big'))
+        # except Exception as e:
+        #     statusTextLabel['foreground'] = 'red'
+        #     statusTextVar.set(str(e))
 
 
 def connect():
@@ -140,16 +150,21 @@ def connect():
     ).start()
 
 def disconnect():
+    global client
+    with client.lock:
+        client.running = False
     client.s.close()
-    del client
+    client = None
 
     for item in [hLabel, ipEntry, portEntry]:
         item['state'] = 'enabled'
 
     connectButton['command'] = connect
+    connectStatus.set('Connect')
 
 def updateStates():
     if autoExposureState.get():
+        sendAutoExposure()
         exposureEntry['state'] = 'disabled'
         isoEntry['state'] = 'disabled'
     else:
@@ -157,13 +172,14 @@ def updateStates():
         isoEntry['state'] = 'enabled'
 
     if autoFocusState.get():
+        sendAutoFocus()
         focusEntry['state'] = 'disabled'
     else:
         focusEntry['state'] = 'enabled'
 
 def sendAutoExposure():
     result = client.transact(
-        client.commandDict['a_exposure'],
+        'a_exposure'
     )
 
     if result == client.commandDict['success']:
@@ -174,11 +190,11 @@ def sendAutoExposure():
         statusTextVar.set("Failed to enable auto exposure.")
     else:
         statusTextLabel['foreground'] = 'red'
-        statusTextVar.set("Socket communication out of sync.")
+        statusTextVar.set(f"Socket communication out of sync. {result}")
 
 def sendManualExposure():
     result = client.transact(
-        client.commandDict['m_exposure'],
+        'm_exposure',
         int.to_bytes(int(exposureEntry.get()), 2, 'big')+\
         int.to_bytes(int(isoEntry.get()), 2, 'big')
     )
@@ -195,7 +211,7 @@ def sendManualExposure():
 
 def sendAutoFocus():
     result = client.transact(
-        client.commandDict['a_focus'],
+        'a_focus'
     )
 
     if result == client.commandDict['success']:
@@ -206,11 +222,11 @@ def sendAutoFocus():
         statusTextVar.set("Failed to enable auto focus.")
     else:
         statusTextLabel['foreground'] = 'red'
-        statusTextVar.set("Socket communication out of sync.")
+        statusTextVar.set(f"Socket communication out of sync. {result}")
 
 def sendManualFocus():
     result = client.transact(
-        client.commandDict['m_focus'],
+        'm_focus',
         int.to_bytes(int(focusEntry.get()), 2, 'big')
     )
 
@@ -226,7 +242,7 @@ def sendManualFocus():
 
 def sendOverlay():
     result = client.transact(
-        client.commandDict['overlay'],
+        'overlay',
         int.to_bytes(overlayState.get(), 2, 'big')
     )
 
@@ -238,11 +254,11 @@ def sendOverlay():
         statusTextVar.set("Failed to toggle overlay.")
     else:
         statusTextLabel['foreground'] = 'red'
-        statusTextVar.set("Socket communication out of sync.")
+        statusTextVar.set(f"Socket communication out of sync. {result}")
 
-def takePicture():
+def takePictureMethod():
     result = client.transact(
-        client.commandDict['take-picture']
+        'take-picture'
     )
 
     if result == client.commandDict['success']:
@@ -254,6 +270,15 @@ def takePicture():
     else:
         statusTextLabel['foreground'] = 'red'
         statusTextVar.set("Socket communication out of sync.")
+
+def startImageStream():
+    imageClient = Client()
+
+    threading.Thread(
+        target=lambda: imageClient.connectStream(
+            ipEntry.get(), int(portEntry.get())
+        )
+    ).start()
 
 # set up gui
 root = Tk()
@@ -376,7 +401,7 @@ overlay = Checkbutton(
     text='Overlay',
     state='disable',
     variable=overlayState,
-    command=updateStates
+    command=sendOverlay
 )
 overlay.grid(row=0, column=2, sticky='W')
 
@@ -384,7 +409,7 @@ takePicture = Button(
     body,
     text='Take Picture',
     state='disable',
-    command=lambda: None
+    command=takePictureMethod
 )
 takePicture.grid(row=1, column=2, stick='W')
 
@@ -396,7 +421,7 @@ viewImage = Button(
     textvariable=viewImageStatus,
     state='disable',
     command=lambda: threading.Thread(
-        target=client.imageStream
+        target=startImageStream
     ).start()
 )
 viewImage.grid(row=2, column=2, sticky='W')
