@@ -5,10 +5,12 @@ Adapted from https://docs.luxonis.com/projects/api/en/latest/samples/08_rgb_mobi
 """
 
 import os
+import re
 from datetime import datetime
 import threading
 from pathlib import Path
 import cv2
+from PIL import Image
 import depthai as dai
 import numpy as np
 import time
@@ -18,6 +20,8 @@ from simplejpeg import encode_jpeg
 Camera object initializes the OAK-D camera,
 then receives image data and NN inferences.
 """
+
+
 class Camera:
     def __init__(self, server, modelName, modelSize, overlay=True):
         self.server = server
@@ -26,7 +30,14 @@ class Camera:
         self.imgCount = 0
         self.lock = threading.Lock()
 
-        mobilenet_path = str((Path(__file__).parent / Path(f'../models/{modelName}/frozen_inference_graph.blob')).resolve().absolute())
+        mobilenet_path = str(
+            (
+                Path(__file__).parent
+                / Path(f"../models/{modelName}/frozen_inference_graph.blob")
+            )
+            .resolve()
+            .absolute()
+        )
 
         # Start defining a pipeline
         self.pipeline = dai.Pipeline()
@@ -47,7 +58,7 @@ class Camera:
 
         # Create outputs
         xout_rgb = self.pipeline.createXLinkOut()
-        xout_rgb.setStreamName('rgb')
+        xout_rgb.setStreamName("rgb")
         controlIn = self.pipeline.createXLinkIn()
         controlIn.setStreamName("control")
         detection_nn.passthrough.link(xout_rgb.input)
@@ -59,7 +70,7 @@ class Camera:
         controlIn.out.link(cam_rgb.inputControl)
 
         # MobilenetSSD label texts
-        self.texts = ['', "ball"]
+        self.texts = ["", "ball"]
 
         self.objects = []
 
@@ -107,14 +118,14 @@ class Camera:
 
     def saveFrame(self):
         with self.lock:
-            cv2.imwrite(f'../images/{datetime.now().isoformat()}.png', self.frameRGB)
+            cv2.imwrite(f"../images/{datetime.now().isoformat()}.png", self.frameRGB)
 
     def main(self):
         # Pipeline defined, now the device is connected to
         with dai.Device(self.pipeline) as device:
             # Start pipeline
             device.startPipeline()
-            self.controlQueue = device.getInputQueue('control')
+            self.controlQueue = device.getInputQueue("control")
             self.ctrl = dai.CameraControl()
 
             # Output queues will be used to get the rgb frames and nn data from the outputs defined above
@@ -144,8 +155,16 @@ class Camera:
                 if in_rgb is not None:
                     frame = in_rgb.getCvFrame()
                     if self.overlay:
-                        cv2.putText(frame, "NN fps: {:.2f}".format(counter / (time.monotonic() - start_time)),
-                                    (2, frame.shape[0] - 4), cv2.FONT_HERSHEY_TRIPLEX, 0.4, color=(255, 255, 255))
+                        cv2.putText(
+                            frame,
+                            "NN fps: {:.2f}".format(
+                                counter / (time.monotonic() - start_time)
+                            ),
+                            (2, frame.shape[0] - 4),
+                            cv2.FONT_HERSHEY_TRIPLEX,
+                            0.4,
+                            color=(255, 255, 255),
+                        )
 
                 if in_nn is not None:
                     detections = in_nn.detections
@@ -155,21 +174,61 @@ class Camera:
                 if frame is not None:
                     objectBuf = []
                     for detection in detections:
-                        bbox = frame_norm(frame, (detection.xmin, detection.ymin, detection.xmax, detection.ymax))
+                        bbox = frame_norm(
+                            frame,
+                            (
+                                detection.xmin,
+                                detection.ymin,
+                                detection.xmax,
+                                detection.ymax,
+                            ),
+                        )
                         if self.overlay:
-                            cv2.rectangle(frame, (bbox[0], bbox[1]), (bbox[2], bbox[3]), (255, 0, 0), 2)
-                            cv2.putText(frame, self.texts[detection.label], (bbox[0] + 10, bbox[1] + 20),
-                                        cv2.FONT_HERSHEY_TRIPLEX, 0.5, 255)
-                            cv2.putText(frame, f"{int(detection.confidence*100)}%", (bbox[0] + 10, bbox[1] + 40),
-                                        cv2.FONT_HERSHEY_TRIPLEX, 0.5, 255)
+                            cv2.rectangle(
+                                frame,
+                                (bbox[0], bbox[1]),
+                                (bbox[2], bbox[3]),
+                                (255, 0, 0),
+                                2,
+                            )
+                            cv2.putText(
+                                frame,
+                                self.texts[detection.label],
+                                (bbox[0] + 10, bbox[1] + 20),
+                                cv2.FONT_HERSHEY_TRIPLEX,
+                                0.5,
+                                255,
+                            )
+                            cv2.putText(
+                                frame,
+                                f"{int(detection.confidence*100)}%",
+                                (bbox[0] + 10, bbox[1] + 40),
+                                cv2.FONT_HERSHEY_TRIPLEX,
+                                0.5,
+                                255,
+                            )
 
-                        objectBuf.append([int(i) for i in [detection.xmin*self.modelSize[0], detection.ymin*self.modelSize[1], detection.xmax*self.modelSize[0], detection.ymax*self.modelSize[1]]])
+                        objectBuf.append(
+                            [
+                                int(i)
+                                for i in [
+                                    detection.xmin * self.modelSize[0],
+                                    detection.ymin * self.modelSize[1],
+                                    detection.xmax * self.modelSize[0],
+                                    detection.ymax * self.modelSize[1],
+                                ]
+                            ]
+                        )
 
                     self.frameRGB = frame
                     # cv2.imshow("rgb", self.frame)
-                    framejpeg = memoryview(encode_jpeg(frame, 50)) # Casting the encoded JPEG as a memoryview
-                                                                   # allows for cheap byte management
-                    self.setData(objectBuf, framejpeg) # Inform the server that the next frame is ready
+                    framejpeg = memoryview(
+                        encode_jpeg(frame, 50)
+                    )  # Casting the encoded JPEG as a memoryview
+                    # allows for cheap byte management
+                    self.setData(
+                        objectBuf, framejpeg
+                    )  # Inform the server that the next frame is ready
 
-                if cv2.waitKey(1) == ord('q'):
+                if cv2.waitKey(1) == ord("q"):
                     break

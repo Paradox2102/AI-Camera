@@ -13,6 +13,7 @@ from tkinter import *
 from tkinter.ttk import *
 from time import sleep
 
+
 class Client:
     def __init__(self):
         # Configurable constants
@@ -90,21 +91,24 @@ class Client:
 
                 # Receive
                 command = int.from_bytes(self.s.recv(2), 'big')
-                if command == self.commandDict['coords']: # Coordinates
+                if command == self.commandDict['coords']:  # Coordinates
                     numObjects = int.from_bytes(self.s.recv(2), 'big')
                     if numObjects > 0:
                         buf = self.s.recv(numObjects*8)
-                        print([int.from_bytes(b0+b1, 'big') for b0, b1 in zip(buf[::2], buf[1::2])])
+                        print([int.from_bytes(b0+b1, 'big')
+                               for b0, b1 in zip(buf[::2], buf[1::2])])
                     else:
                         print("No balls.")
-                elif command == self.commandDict['image']: # Image stream
+                elif command == self.commandDict['image']:  # Image stream
                     imgSize = int.from_bytes(self.s.recv(2), 'big')
                     buf = bytearray()
-                    while len(buf) < imgSize: # Accumulate bytes until buffer is full
+                    while len(buf) < imgSize:  # Accumulate bytes until buffer is full
                         l = len(buf)
-                        buf += self.s.recv(self.BUF_SIZE if l < imgSize-self.BUF_SIZE else imgSize-l)
+                        buf += self.s.recv(self.BUF_SIZE if l <
+                                           imgSize-self.BUF_SIZE else imgSize-l)
                     try:
-                        cv2.imshow('image', cv2.resize(decode_jpeg(buf), (800,450)))
+                        cv2.imshow('image', cv2.resize(
+                            decode_jpeg(buf), (800, 450)))
                     except ValueError:
                         statusTextLabel['foreground'] = 'red'
                         statusTextVar.set("Packet loss.")
@@ -120,14 +124,15 @@ class Client:
 
     def transact(self, word, data=None):
         assert type(word) == str, "Word must be of type 'str'"
-        assert data is None or type(data) == bytes
+        assert data is None or type(
+            data) == bytes, "Data must be of type 'None' or 'bytes'"
         try:
             with self.lock:
                 # Transmit
                 self.s.send(int.to_bytes(self.commandDict[word], 2, 'big'))
 
                 if data != None:
-                    self.s.send(int.to_bytes(len(data), 2, 'big'))
+                    # self.s.send(int.to_bytes(len(data), 2, 'big'))
                     self.s.send(data)
 
                 # Receive
@@ -146,7 +151,8 @@ class Client:
                 with self.lock:
                     if not self.running:
                         return
-                    self.s.send(int.to_bytes(self.commandDict['no-op'], 2, 'big'))
+                    self.s.send(int.to_bytes(
+                        self.commandDict['no-op'], 2, 'big'))
         except Exception as e:
             statusTextLabel['foreground'] = 'red'
             statusTextVar.set(str(e))
@@ -161,6 +167,7 @@ def connect():
         ),
         daemon=True
     ).start()
+
 
 def disconnect():
     global client
@@ -195,6 +202,7 @@ def disconnect():
     connectButton['command'] = connect
     connectStatus.set('Connect')
 
+
 def sendAutoExposure():
     if autoExposureState.get():
         exposureEntry['state'] = 'disabled'
@@ -221,10 +229,11 @@ def sendAutoExposure():
         exposureLabel['state'] = 'enabled'
         isoLabel['state'] = 'enabled'
 
+
 def sendManualExposure():
     result = client.transact(
         'm_exposure',
-        int.to_bytes(int(exposureEntry.get()), 2, 'big')+\
+        int.to_bytes(int(exposureEntry.get()), 2, 'big') +
         int.to_bytes(int(isoEntry.get()), 2, 'big')
     )
 
@@ -237,6 +246,7 @@ def sendManualExposure():
     else:
         statusTextLabel['foreground'] = 'red'
         statusTextVar.set("Socket communication out of sync.")
+
 
 def sendAutoFocus():
     if autoFocusState.get():
@@ -260,6 +270,7 @@ def sendAutoFocus():
         focusEntry['state'] = 'enabled'
         focusLabel['state'] = 'enabled'
 
+
 def sendManualFocus():
     result = client.transact(
         'm_focus',
@@ -275,6 +286,7 @@ def sendManualFocus():
     else:
         statusTextLabel['foreground'] = 'red'
         statusTextVar.set("Socket communication out of sync.")
+
 
 def sendOverlay():
     result = client.transact(
@@ -292,6 +304,7 @@ def sendOverlay():
         statusTextLabel['foreground'] = 'red'
         statusTextVar.set(f"Socket communication out of sync. {result}")
 
+
 def takePictureMethod():
     result = client.transact(
         'take-picture'
@@ -307,6 +320,7 @@ def takePictureMethod():
         statusTextLabel['foreground'] = 'red'
         statusTextVar.set("Socket communication out of sync.")
 
+
 def startImageStream():
     global imageClient
     imageClient = Client()
@@ -320,10 +334,12 @@ def startImageStream():
 
     viewImage['command'] = closeImageStream
 
+
 def closeImageStream():
     imageClient.running = False
 
     viewImage['command'] = startImageStream
+
 
 # set up gui
 root = Tk()
