@@ -175,7 +175,19 @@ def disconnect():
     for item in [hLabel, ipEntry, portEntry]:
         item['state'] = 'enabled'
 
-    for item in [autoExposure, autoFocus, overlay, viewImage, takePicture]:
+    for item in [
+        autoExposure,
+        exposureLabel,
+        exposureEntry,
+        isoLabel,
+        isoEntry,
+        autoFocus,
+        focusLabel,
+        focusEntry,
+        overlay,
+        viewImage,
+        takePicture
+    ]:
         item['state'] = 'disabled'
 
     connectButton['command'] = connect
