@@ -5,12 +5,10 @@ Adapted from https://docs.luxonis.com/projects/api/en/latest/samples/08_rgb_mobi
 """
 
 import os
-import re
 from datetime import datetime
 import threading
 from pathlib import Path
 import cv2
-from PIL import Image
 import depthai as dai
 import numpy as np
 import time
