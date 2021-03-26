@@ -55,7 +55,8 @@ class Client:
         self.running = True
 
         threading.Thread(
-            target=self._keepalive
+            target=self._keepalive,
+            daemon=True
         ).start()
 
         for item in [autoExposure, autoFocus, overlay, viewImage, takePicture]:
@@ -157,7 +158,8 @@ def connect():
     threading.Thread(
         target=lambda: client.connect(
             ipEntry.get(), int(portEntry.get())
-        )
+        ),
+        daemon=True
     ).start()
 
 def disconnect():
@@ -312,7 +314,8 @@ def startImageStream():
     threading.Thread(
         target=lambda: imageClient.connectStream(
             ipEntry.get(), int(portEntry.get())
-        )
+        ),
+        daemon=True
     ).start()
 
     viewImage['command'] = closeImageStream
@@ -463,7 +466,8 @@ viewImage = Button(
     textvariable=viewImageStatus,
     state='disable',
     command=lambda: threading.Thread(
-        target=startImageStream
+        target=startImageStream,
+        daemon=True
     ).start()
 )
 viewImage.grid(row=2, column=2, sticky='W')
