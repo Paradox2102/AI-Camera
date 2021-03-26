@@ -76,18 +76,29 @@ class Client:
 
                 elif command == self.server.commandDict['overlay']:
                     try:
+                        l = self.sock.recv(2)
                         self.server.camera.overlay = int.from_bytes(self.sock.recv(2), 'big')
                     except Exception as e:
                         print(f'[ERR] {str(type(e))}: {str(e)}')
                         self.sock.send(int.to_bytes(self.server.commandDict['failure'], 2, 'big'))
                         continue
 
+                    self.sock.send(int.to_bytes(self.server.commandDict['success'], 2, 'big'))
+
                 elif command == self.server.commandDict['m_exposure']:
+                    l = self.sock.recv(2)
                     buf = self.sock.recv(4)
                     self.server.camera.exposure = int.from_bytes(buf[:2], 'big'), int.from_bytes(buf[2:], 'big')
 
                 elif command == self.server.commandDict['a_exposure']:
                     self.server.camera.exposure = None
+
+                elif command == self.server.commandDict['m_focus']:
+                    l = self.sock.recv(2)
+                    self.server.camera.exposure = int.from_bytes(self.sock.recv(2), 'big')
+
+                elif command == self.server.commandDict['a_focus']:
+                    self.server.camera.focus = None
 
                 else:
                     raise Client.InvalidCommandError()
@@ -99,7 +110,7 @@ class Client:
             print(f'[ERR] A fatal error occurred on client at address {self.addr}, reduce number of simultaneous connections.')
 
         except Client.InvalidCommandError: # Undefined command received
-            print(f'[Err] Invalid command received in client at address {self.addr}, could be due to bad packets.')
+            print(f'[Err] Invalid command received in client at address {self.addr}, could be due to bad packets. {command}')
 
         except socket.timeout: # Watchdog catch
             print(f'[WATCHDOG] Client at address {self.addr} timed out, disconnecting.')

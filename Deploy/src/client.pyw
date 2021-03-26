@@ -255,6 +255,15 @@ def takePicture():
         statusTextLabel['foreground'] = 'red'
         statusTextVar.set("Socket communication out of sync.")
 
+def startImageStream():
+    imageClient = Client()
+
+    threading.Thread(
+        target=lambda: imageClient.connectStream(
+            ipEntry.get(), int(portEntry.get())
+        )
+    ).start()
+
 # set up gui
 root = Tk()
 root.title("Control Center")

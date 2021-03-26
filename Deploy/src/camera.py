@@ -6,9 +6,11 @@ Adapted from https://docs.luxonis.com/projects/api/en/latest/samples/08_rgb_mobi
 
 import os
 import re
+from datetime import datetime
 import threading
 from pathlib import Path
 import cv2
+from PIL import Image
 import depthai as dai
 import numpy as np
 import time
@@ -106,17 +108,7 @@ class Camera:
 
     def saveFrame(self):
         with self.lock:
-            prev = os.listdir('../images')
-            if len(prev) > 0:
-                num = re.search(
-                    r'\d+$',
-                    prev[-1].split('.')[-2]
-                ).group()
-
-                self.imgCount = num + 1
-
-            cv2.imsave(f'../images/{self.imgCount}.png', self.frame)
-            self.imgCount += 1
+            cv2.imwrite(f'../images/{datetime.now().isoformat()}.png', self.frameRGB)
 
     def main(self):
         # Pipeline defined, now the device is connected to
@@ -150,10 +142,11 @@ class Camera:
                 in_rgb = q_rgb.get()
                 in_nn = q_nn.get()
 
-                if in_rgb is not None and self.overlay:
+                if in_rgb is not None:
                     frame = in_rgb.getCvFrame()
-                    cv2.putText(frame, "NN fps: {:.2f}".format(counter / (time.monotonic() - start_time)),
-                                (2, frame.shape[0] - 4), cv2.FONT_HERSHEY_TRIPLEX, 0.4, color=(255, 255, 255))
+                    if self.overlay:
+                        cv2.putText(frame, "NN fps: {:.2f}".format(counter / (time.monotonic() - start_time)),
+                                    (2, frame.shape[0] - 4), cv2.FONT_HERSHEY_TRIPLEX, 0.4, color=(255, 255, 255))
 
                 if in_nn is not None:
                     detections = in_nn.detections
@@ -173,7 +166,7 @@ class Camera:
 
                         objectBuf.append([int(i) for i in [detection.xmin*self.modelSize[0], detection.ymin*self.modelSize[1], detection.xmax*self.modelSize[0], detection.ymax*self.modelSize[1]]])
 
-                    self.frame = frame
+                    self.frameRGB = frame
                     # cv2.imshow("rgb", self.frame)
                     framejpeg = memoryview(encode_jpeg(frame, 50)) # Casting the encoded JPEG as a memoryview
                                                                    # allows for cheap byte management
