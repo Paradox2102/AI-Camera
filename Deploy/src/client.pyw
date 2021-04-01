@@ -22,6 +22,7 @@ class Client:
 
         self.commandDict = {
             'coords': 0x10,
+            'count': 0x11,
             'image': 0x20,
             'take-picture': 0x30,
             'overlay': 0x40,
@@ -60,7 +61,7 @@ class Client:
             daemon=True
         ).start()
 
-        for item in [autoExposure, autoFocus, overlay, viewImage, takePicture]:
+        for item in [autoExposure, autoFocus, overlay, viewImage, takePicture, ballCount]:
             item['state'] = 'enabled'
 
     def connectStream(self, ip, port=1234):
@@ -340,6 +341,12 @@ def closeImageStream():
 
     viewImage['command'] = startImageStream
 
+def getBallCount():
+    result = client.transact(
+        'count'
+    )
+
+    ballCount['text'] = f'Balls: {result}'
 
 # set up gui
 root = Tk()
@@ -487,6 +494,14 @@ viewImage = Button(
     ).start()
 )
 viewImage.grid(row=2, column=2, sticky='W')
+
+ballCount = Button(
+    body,
+    text='Balls: 0',
+    state='disable',
+    command=getBallCount
+)
+ballCount.grid(row=3, column=2, sticky='W')
 
 statusTextVar = StringVar()
 

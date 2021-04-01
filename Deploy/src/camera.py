@@ -15,6 +15,7 @@ import depthai as dai
 import numpy as np
 import time
 from simplejpeg import encode_jpeg
+from networktables import NetworkTables as nt
 
 """
 Camera object initializes the OAK-D camera,
@@ -29,6 +30,9 @@ class Camera:
         self.overlay = overlay
         self.imgCount = 0
         self.lock = threading.Lock()
+
+        nt.initialize(server='roborio-2102-frc.local')
+        self.sd = nt.getTable('SmartDashboard')
 
         mobilenet_path = str(
             (
@@ -74,10 +78,17 @@ class Camera:
 
         self.objects = []
 
+    def updateNetworkTable(self, data):
+        values = [j for i in data for j in i]
+        # print("ballcoords=", values)
+        self.sd.putNumberArray('ballcoords', values)
+        self.sd.putNumber('ballcount', len(values)//4)
+
     def setData(self, objects, frame):
         with self.lock:
             self.objects = objects
             self.frame = frame
+            self.updateNetworkTable(objects)
 
         for client in self.server.clients.values():
             client.frameReady.release()

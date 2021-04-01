@@ -32,15 +32,15 @@ class Client:
                 # Receive command
                 command = int.from_bytes(self.sock.recv(2), "big")
 
+                self.frameReady.acquire(False)
+                self.frameReady.acquire()
+
                 # No operation (watchdog)
                 if command == self.server.commandDict["no-op"]:
                     continue
 
                 # Send coords
                 elif command == self.server.commandDict["coords"]:
-                    self.frameReady.acquire(False)
-                    self.frameReady.acquire()
-
                     objects = self.server.camera.getObjects()
                     numObjects = len(objects)
                     self.sock.send(
@@ -53,11 +53,11 @@ class Client:
                             msg += int.to_bytes(i, 2, "big")
                         self.sock.send(msg)
 
+                elif command == self.server.commandDict["count"]:
+                    self.sock.send(int.to_bytes(len(self.server.camera.objects), 2, 'big'))
+
                 # Image stream
                 elif command == self.server.commandDict["image"]:
-                    self.frameReady.acquire(False)
-                    self.frameReady.acquire()
-
                     frame = self.server.camera.getFrame()
 
                     self.sock.send(
@@ -203,6 +203,7 @@ class Server:
 
         self.commandDict = {
             "coords": 0x10,
+            "count": 0x11,
             "image": 0x20,
             "take-picture": 0x30,
             "overlay": 0x40,
